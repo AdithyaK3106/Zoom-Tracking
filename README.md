@@ -1,0 +1,1 @@
+# gimbal-tracking-w-auto-zooming
