@@ -15,7 +15,7 @@ class SingleObjectTracker:
         self.box_history = []
         self.zoom_smoothness = 0.15
         self.parallax_smoothness = 0.2
-        
+
     def mouse_click(self, event, x, y, flags, param):
         """Handle mouse click to select object"""
         if event == cv2.EVENT_LBUTTONDOWN:
@@ -27,7 +27,7 @@ class SingleObjectTracker:
                     self.box_history = []
                     print(f"Selected object: {class_name} (Track ID: {track_id})")
                     return
-    
+                
     def calculate_zoom_level(self, box):
         """Calculate zoom level based on box size"""
         if not box:
