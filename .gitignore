@@ -1,0 +1,24 @@
+# Virtual environment
+.venv/
+venv/
+ENV/
+
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+
+# MacOS
+.DS_Store
+
+# YOLO / Ultralytics specific
+*.pt
+runs/
+Model_Evaluation/
+
+# Jupyter Notebooks
+.ipynb_checkpoints
