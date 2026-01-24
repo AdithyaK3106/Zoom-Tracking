@@ -11,7 +11,7 @@ best.pt is your trained model
 the .py script runs it with 1 classifier
 
 # Info for *take_2*
-Make sure all files are in the same dir, if it doesnt work add the full path of the model.
+Make sure all files are in the same dir, if it doesnt work add the full path of best_take2.pt to the py script.
 
 Contains:
 > 1. Custom model Evaluation
