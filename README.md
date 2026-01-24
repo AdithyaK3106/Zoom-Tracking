@@ -14,6 +14,6 @@ the .py script runs it with 1 classifier
 Make sure all files are in the same dir, if it doesnt work add the full path of best_take2.pt to the py script.
 
 Contains:
-> 1. Custom model Evaluation
-> 2. Python script to run the model
-> 3. best_take2.pt (this holds the model info)
+- 1. Custom model Evaluation
+- 2. Python script to run the model
+- 3. best_take2.pt (this holds the model info)
