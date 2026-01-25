@@ -1,19 +1,29 @@
-# gimbal-tracking-w-auto-zooming
+# Gimbal Tracking with Auto-Zooming
 
-the *single-object-tracking_BASIC.py* works on desktop only, purely a proof of concept.
+This project implements a **real-time object tracking system with auto-zooming capabilities**, designed for use with a gimbal to keep target objects centered and properly framed.
 
-Will commit the phone compatiable versions laters
+## 🎯 Project Goal
+To provide a seamless tracking experience where the camera (webcam or gimbal-mounted) automatically adjusts its zoom level and centering based on the movement and size of a selected target object.
 
+## 🚀 Key Features
+- **Real-time Tracking**: Uses YOLOv8 for high-performance object detection and persistent tracking.
+- **Auto-Zooming**: Dynamically calculates zoom levels based on the object's distance (bounding box area).
+- **Smooth Parallax Effect**: Uses affine transformations to keep the target centered while maintaining smooth transitions.
+- **Interactive Selection**: Desktop proof-of-concept allows click-to-track functionality.
 
-# Info for *take_1*
-Install both the files. 
-best.pt is your trained model
-the .py script runs it with 1 classifier
+## 🏗️ Core Components
+- **Detection Engine**: YOLOv8 (Ultralytics) - tracks objects using ByteTrack or BoTSort.
+- **Zoom Logic**: Adaptive scaling based on normalized bounding box area.
+- **Centering (Parallax)**: Smooth coordinate translation to follow the target without jerky movements.
 
-# Info for *take_2*
-Make sure all files are in the same dir, if it doesnt work add the full path of best_take2.pt to the py script.
+## 📂 File Structure
+- `proof-of-concept-PC.py`: Desktop-ready script with click-to-track and auto-zoom logic.
+- `Take_1/`: Initial iteration containing `Project_Mr-Sippy.py` and first-pass custom model.
+- `Take_2/`: Improved iteration with updated tracking parameters and `best_take2.pt`.
+- `requirements.txt`: Project dependencies (ultralytics, opencv-python, numpy).
 
-Contains:
-- 1. Custom model Evaluation
-- 2. Python script to run the model
-- 3. best_take2.pt (this holds the model info)
+## 🛠️ Getting Started
+1. Install dependencies: `pip install -r requirements.txt`
+2. Run the proof-of-concept: `python proof-of-concept-PC.py`
+3. Click on any object in the webcam feed to start tracking.
+4. Press `r` to reset selection or `q` to quit.
