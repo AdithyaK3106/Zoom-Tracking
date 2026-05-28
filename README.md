@@ -1,29 +1,145 @@
-# Gimbal Tracking with Auto-Zooming
+# Monocular Zoom-Tracking Pipeline with YOLOv8 & ByteTrack
 
-This project implements a **real-time object tracking system with auto-zooming capabilities**, designed for use with a gimbal to keep target objects centered and properly framed.
+An end-to-end, high-performance, single-threaded **monocular zoom-tracking pipeline** designed to dynamically center and magnify target objects (webcams, local video files, or RTSP feeds). The system uses the target's relative bounding box area as a depth proxy, applying an Exponential Moving Average (EMA) for temporal smoothing to simulate continuous camera zoom control.
 
-## 🎯 Project Goal
-To provide a seamless tracking experience where the camera (webcam or gimbal-mounted) automatically adjusts its zoom level and centering based on the movement and size of a selected target object.
+---
+
+## 🏗️ System Architecture
+
+The pipeline processes input frames using a **two-pass feedback loop** to optimize target detection and tracking accuracy at various scale boundaries:
+
+```mermaid
+graph TD
+    A[VideoCapture: cv2.VideoCapture] -->|BGR Frame| B[ZoomTrackingPipeline]
+    B -->|Pass 1: Full Frame| C[DetectionModule: YOLOv8]
+    C -->|Bboxes & Confidences| D{Is Target Tracked?}
+    
+    D -->|Yes| E[ZoomEngine: Crop & Resize]
+    E -->|Zoomed Crop| F[Pass 2: DetectionModule on Crop]
+    F -->|Local Bboxes| G[Coordinate Remapping: Local to Global]
+    G --> H[Merge & NMS: cv2.dnn.NMSBoxes]
+    D -->|No| I[Use Pass 1 Detections]
+    
+    H --> J[TrackingModule: Supervision ByteTrack]
+    I --> J
+    J -->|Active Tracked Objects| K[User Mouse Click Selection]
+    K -->|Target Selection/Reset| B
+    B -->|cv2.imshow| L[Visualization / Inset Display]
+```
+
+---
 
 ## 🚀 Key Features
-- **Real-time Tracking**: Uses YOLO26 for high-performance object detection and persistent tracking.
-- **Auto-Zooming**: Dynamically calculates zoom levels based on the object's distance (bounding box area).
-- **Smooth Parallax Effect**: Uses affine transformations to keep the target centered while maintaining smooth transitions.
-- **Interactive Selection**: Desktop proof-of-concept allows click-to-track functionality.
 
-## 🏗️ Core Components
-- **Detection Engine**: YOLO26 (Ultralytics) - tracks objects using ByteTrack or BoTSort.
-- **Zoom Logic**: Adaptive scaling based on normalized bounding box area.
-- **Centering (Parallax)**: Smooth coordinate translation to follow the target without jerky movements.
+* **Two-Pass Detection Feedback Loop**: Runs a secondary inference pass on a zoomed crop of the target, improving detection confidence on distant or small targets.
+* **Decoupled Tracker Integration**: Separates detection from tracking. Coordinates are projected back to global space, deduplicated using Non-Maximum Suppression (NMS), and tracked via **Supervision ByteTrack**.
+* **Temporal Smoothing**: Smooths zoom level changes and crop center coordinate translations via an Exponential Moving Average (EMA) to prevent visual jitter.
+* **Interactive Target Selection**: Allows manual track locking and resetting via OpenCV mouse callbacks.
+* **Comprehensive Research Evaluation Framework**: Built-in rig to automatically benchmark baseline tracking vs. adaptive zoom models, producing tabular metrics and latency/IoU graphs.
+
+---
 
 ## 📂 File Structure
-- `proof-of-concept-PC.py`: Desktop-ready script with click-to-track and auto-zoom logic.
-- `Take_1/`: Initial iteration containing `Project_Mr-Sippy.py` and first-pass custom model.
-- `Take_2/`: Improved iteration with updated tracking parameters and `best_take2.pt`.
-- `requirements.txt`: Project dependencies (ultralytics, opencv-python, numpy).
 
-## 🛠️ Getting Started
-1. Install dependencies: `pip install -r requirements.txt`
-2. Run the proof-of-concept: `python proof-of-concept-PC.py`
-3. Click on any object in the webcam feed to start tracking.
-4. Press `r` to reset selection or `q` to quit.
+```
+zoom-tracking/
+├── main.py                     # Project main entry point
+├── requirements.txt            # Python dependencies
+├── modules/                    # Main application logic
+│   ├── __init__.py
+│   ├── detection.py            # YOLO detector wrapper
+│   ├── tracker.py              # ByteTrack tracker wrapper
+│   ├── zoom_engine.py          # Bbox-to-zoom mapping, crop, and coordinate translation
+│   ├── user_interaction.py     # Mouse click event handling
+│   ├── video_capture.py        # Video frame stream manager
+│   └── pipeline.py             # Orchestration pipeline
+├── evaluation/                 # Metrics & evaluation suite
+│   ├── configs/
+│   │   └── eval_config.yaml    # Evaluation configuration
+│   ├── runner.py               # Research benchmark runner
+│   ├── evaluator.py            # Quantitative evaluation calculator (IoU, latency, etc.)
+│   ├── visualizer.py           # Generation of latency/IoU graphs & pie charts
+│   ├── failure_analysis.py     # Heuristic tracking failure categorizer
+│   └── validation/
+│       ├── validator.py        # Data verification & assertions
+│       └── import_real_annotations.py
+└── data/                       # Annotations and test video directories
+    └── annotations/            # Evaluation ground truth files
+```
+
+---
+
+## 🛠️ Setup Instructions
+
+### 1. Install Dependencies
+Ensure you have Python 3.9+ installed, then run:
+```bash
+pip install -r requirements.txt
+```
+
+### 2. Model Weights
+The system defaults to using standard YOLOv8 nano models. Ultralytics will automatically download default weights (like `yolov8n.pt`) on the first run.
+If you have custom trained weights (e.g. `yolo26n.pt`), place them in the project root folder.
+
+### 3. Test Videos & Evaluation Data
+To run the evaluation benchmarks, you should place your test `.mp4` video files under the `data/test_videos/` directory as defined in `evaluation/configs/eval_config.yaml`.
+
+---
+
+## 💻 Running the Zoom-Tracker
+
+Run the interactive desktop application via the command line:
+
+```bash
+# Run with default webcam (index 0)
+python main.py
+
+# Run on a local video file
+python main.py --source data/test_videos/car2.mp4
+
+# Run with GPU acceleration (recommended for two-pass loop)
+python main.py --source data/test_videos/car2.mp4 --device cuda
+
+# Detect only specific classes (e.g. person = 0, car = 2, motorcycle = 3)
+python main.py --classes 0 2 3
+```
+
+### Controls:
+* **Left Click**: Select/lock tracking onto a detected object.
+* **`r`**: Reset tracking lock (returns zoom to 1.0x).
+* **`q`**: Quit the application.
+
+### Available Command Line Arguments:
+| Argument | Default | Description |
+| :--- | :--- | :--- |
+| `--source` | `"0"` | Video source: webcam index (e.g. `"0"`), local video file path, or RTSP stream URL |
+| `--model` | `"yolo26n.pt"` | Path to YOLO model weights |
+| `--conf` | `0.35` | Bounding box detection confidence threshold |
+| `--device` | `"cpu"` | Device to run inference on: `"cpu"`, `"cuda"`, or `"mps"` |
+| `--classes` | `None` | Restrict tracking to specific COCO class IDs (e.g. `--classes 0 2`) |
+| `--no-zoom-redetect` | `False` | Disable the second-pass detection loop (Pass 2) |
+| `--min-zoom` | `1.0` | Minimum zoom level scale factor |
+| `--max-zoom` | `6.0` | Maximum zoom level scale factor |
+| `--ref-ratio` | `0.08` | Area ratio of target bounding box relative to frame to define 1.0x zoom |
+
+---
+
+## 📊 Running Evaluations & Generating Benchmarks
+
+The research evaluation framework compares tracking performance across three modes:
+1. **Baseline**: YOLOv8 detection only (Mode A).
+2. **Tracking**: YOLOv8 + ByteTrack (Mode B).
+3. **Adaptive Zoom**: YOLOv8 + ByteTrack + Two-Pass Zoom feedback (Mode C).
+
+To execute the full benchmark run:
+```bash
+python evaluation/runner.py
+```
+
+### Evaluation Deliverables:
+* **`evaluation/results/results.json`**: Aggregate performance tables including average IoU, Zoom Gain, tracking stability, latency, and recovery rates.
+* **`evaluation/results/plots/`**: Automatically generated research plots illustrating:
+  * **IoU vs. Time** & **Object Size vs. Time**
+  * **Latency Distributions** (Mode comparison)
+  * **Lag Analysis** (Causality of Zoom_t vs. IoU_t+1)
+  * **Failure Mode Distributions** (Motion failure vs. scale failure vs. occlusion)
