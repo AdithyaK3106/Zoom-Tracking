@@ -28,7 +28,7 @@ scenarios:
     difficulty: hard
 
   - name: person_scale
-    path: data/test_videos/PersonWalkingAway.mp4
+    path: data/test_videos/person_scale.mp4
     type: scale_variation
     difficulty: medium
 
