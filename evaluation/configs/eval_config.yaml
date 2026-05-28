@@ -1,0 +1,44 @@
+# Evaluation Configuration
+# -------------------------
+
+# Model name mappings (log_filename -> model_display_name)
+models:
+  baseline: "YOLO only (Mode A)"
+  tracking: "YOLO + ByteTrack (Mode B)"
+  adaptive_zoom: "Adaptive Zoom (Mode C)"
+
+# Baseline model for gain calculations
+baseline_model: "baseline"
+
+# Scenarios Metadata
+scenarios:
+  - name: car2
+    path: data/test_videos/car2.mp4
+    type: stable
+    difficulty: easy
+
+  - name: car3
+    path: data/test_videos/car3.mp4
+    type: scale_variation
+    difficulty: medium
+
+  - name: motorcycle
+    path: data/test_videos/motorcycle.mp4
+    type: fast_motion
+    difficulty: hard
+
+  - name: person_scale
+    path: data/test_videos/PersonWalkingAway.mp4
+    type: scale_variation
+    difficulty: medium
+
+# Paths
+paths:
+  scenarios_dir: "data/annotations"
+  logs_dir: "logs/frame_logs"
+  results_dir: "evaluation/results"
+
+# Thresholds
+thresholds:
+  iou: 0.5
+  confidence: 0.3

@@ -1,0 +1,4 @@
+[
+  {"frame_id": 0, "bbox": [200, 200, 60, 60], "occlusion_flag": false},
+  {"frame_id": 10, "bbox": [210, 210, 62, 62], "occlusion_flag": false}
+]

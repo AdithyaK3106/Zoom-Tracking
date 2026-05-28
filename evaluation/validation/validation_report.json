@@ -1,0 +1,37 @@
+{
+  "data_integrity": {
+    "frame_match": true,
+    "missing_fields": [],
+    "null_values": 0,
+    "status": "pass"
+  },
+  "detection_validation": {
+    "iou_mean": 0.898511198506783,
+    "status": "pass"
+  },
+  "tracking_validation": {
+    "fragmentation": 0,
+    "continuity": 1.0,
+    "id_switches": 0,
+    "status": "pass"
+  },
+  "zoom_validation": {
+    "correlation": 1.0,
+    "jerk": 1.942890293094024e-16,
+    "status": "pass"
+  },
+  "feedback_validation": {
+    "delta_iou": 0.08655612566748683,
+    "status": "pass"
+  },
+  "temporal_validation": {
+    "lag_corr": 0.7948486680116015,
+    "status": "pass"
+  },
+  "system_validation": {
+    "metrics_valid": true,
+    "pipeline_complete": true,
+    "status": "pass"
+  },
+  "overall_status": "pass"
+}

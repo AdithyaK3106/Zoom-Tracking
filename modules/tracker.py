@@ -71,7 +71,7 @@ class TrackingModule:
         frame_rate:                 int              = 30,
         class_names:                Optional[Dict[int, str]] = None,
     ):
-        self.tracker = sv.ByteTracker(
+        self.tracker = sv.ByteTrack(
             track_activation_threshold=track_activation_threshold,
             lost_track_buffer=lost_track_buffer,
             minimum_matching_threshold=minimum_matching_threshold,
@@ -146,7 +146,7 @@ class TrackingModule:
             self.tracker.reset()
         except AttributeError:
             # Older supervision versions don't expose reset(); re-instantiate.
-            self.tracker = sv.ByteTracker(
+            self.tracker = sv.ByteTrack(
                 track_activation_threshold=self.tracker.track_activation_threshold,
                 lost_track_buffer=self.tracker.lost_track_buffer,
                 minimum_matching_threshold=self.tracker.minimum_matching_threshold,

@@ -65,6 +65,7 @@ class FrameLogger:
             "confidence": None,
             "track_id": None,
             "zoom_factor": 1.0,
+            "crop_region": None, # [x1, y1, x2, y2] in original frame
             "object_size": None,
             "center_error": None,
             "latency_ms": None
@@ -75,7 +76,7 @@ class FrameLogger:
         Log detection targets of the frame.
         
         Args:
-            bbox (List[float]): Bounding box in format [x, y, w, h].
+            bbox (List[float]): Bounding box in format [x1, y1, x2, y2].
             confidence (float): Detection confidence (0.0 to 1.0).
             track_id (int): Identifier for the tracked object.
         """
@@ -83,14 +84,17 @@ class FrameLogger:
         self.current_frame["confidence"] = confidence
         self.current_frame["track_id"] = track_id
 
-    def log_zoom(self, zoom_factor: float):
+    def log_zoom(self, zoom_factor: float, crop_region: Optional[Tuple[int, int, int, int]] = None):
         """
         Log camera control / scaling metrics.
         
         Args:
             zoom_factor (float): The applied digital or optical zoom factor.
+            crop_region (Tuple): (x1, y1, x2, y2) in original frame coordinates.
         """
         self.current_frame["zoom_factor"] = zoom_factor
+        if crop_region is not None:
+            self.current_frame["crop_region"] = list(crop_region)
 
     def log_metrics(self, object_size: float, center_error: float):
         """
@@ -138,7 +142,7 @@ class FrameLogger:
                 # If creating for the first time, write column headers
                 if not self._csv_header_written:
                     headers = [
-                        "frame_id", "timestamp", "bbox_x", "bbox_y", "bbox_w", "bbox_h",
+                        "frame_id", "timestamp", "x1", "y1", "x2", "y2",
                         "confidence", "track_id", "zoom_factor", "object_size", 
                         "center_error", "latency_ms"
                     ]
@@ -172,14 +176,15 @@ class FrameLogger:
         Helper method to compute object_size and center_error.
         
         Args:
-            bbox (List[float]): Bounding box in [x, y, w, h] format.
+            bbox (List[float]): Bounding box in [x1, y1, x2, y2] format.
             frame_width (int): Frame width.
             frame_height (int): Frame height.
             
         Returns:
             Tuple[float, float]: (object_size, center_error)
         """
-        x, y, w, h = bbox
+        x1, y1, x2, y2 = bbox
+        w, h = x2 - x1, y2 - y1
         
         # Compute object size (fraction of bounding box area relative to frame area)
         bbox_area = w * h
@@ -187,8 +192,8 @@ class FrameLogger:
         object_size = bbox_area / frame_area if frame_area > 0 else 0.0
         
         # Compute center error (Euclidean distance from object center to frame center)
-        obj_center_x = x + (w / 2.0)
-        obj_center_y = y + (h / 2.0)
+        obj_center_x = x1 + (w / 2.0)
+        obj_center_y = y1 + (h / 2.0)
         
         frame_center_x = frame_width / 2.0
         frame_center_y = frame_height / 2.0

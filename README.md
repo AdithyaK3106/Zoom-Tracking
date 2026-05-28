@@ -6,13 +6,13 @@ This project implements a **real-time object tracking system with auto-zooming c
 To provide a seamless tracking experience where the camera (webcam or gimbal-mounted) automatically adjusts its zoom level and centering based on the movement and size of a selected target object.
 
 ## 🚀 Key Features
-- **Real-time Tracking**: Uses YOLOv8 for high-performance object detection and persistent tracking.
+- **Real-time Tracking**: Uses YOLO26 for high-performance object detection and persistent tracking.
 - **Auto-Zooming**: Dynamically calculates zoom levels based on the object's distance (bounding box area).
 - **Smooth Parallax Effect**: Uses affine transformations to keep the target centered while maintaining smooth transitions.
 - **Interactive Selection**: Desktop proof-of-concept allows click-to-track functionality.
 
 ## 🏗️ Core Components
-- **Detection Engine**: YOLOv8 (Ultralytics) - tracks objects using ByteTrack or BoTSort.
+- **Detection Engine**: YOLO26 (Ultralytics) - tracks objects using ByteTrack or BoTSort.
 - **Zoom Logic**: Adaptive scaling based on normalized bounding box area.
 - **Centering (Parallax)**: Smooth coordinate translation to follow the target without jerky movements.
 

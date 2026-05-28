@@ -22,3 +22,11 @@ Model_Evaluation/
 
 # Jupyter Notebooks
 .ipynb_checkpoints
+
+# Media / video files
+*.mp4
+
+# Generated logs & results
+logs/frame_logs/
+evaluation/results/
+evaluation/validation/visual_checks/

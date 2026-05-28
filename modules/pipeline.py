@@ -57,7 +57,7 @@ Display layout
 
 import cv2
 import numpy as np
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Dict, Any
 
 from .video_capture    import VideoCapture
 from .detection        import DetectionModule, Detection
@@ -103,15 +103,17 @@ class ZoomTrackingPipeline:
     def __init__(
         self,
         source:               int | str = 0,
-        model_path:           str       = "yolov8n.pt",
-        model_version:        str       = "yolov8n",
+        model_path:           str       = "yolo26n.pt",
+        model_version:        str       = "yolo26n",
         conf_threshold:       float     = 0.35,
         enable_zoom_redetect: bool      = True,
         device:               str       = "cpu",
         window_name:          str       = "Zoom Tracker",
+        mode:                 str       = "adaptive_zoom" # "baseline", "tracking", "adaptive_zoom"
     ):
         self.window_name          = window_name
         self.enable_zoom_redetect = enable_zoom_redetect
+        self.mode                 = mode
 
         # ── Instantiate modules ───────────────────────────────────────
         self.capture = VideoCapture(source)
@@ -139,36 +141,40 @@ class ZoomTrackingPipeline:
     # ==================================================================
     def run(self):
         """Main loop.  Blocks until 'Q' is pressed or the stream ends."""
-        cv2.namedWindow(self.window_name, cv2.WINDOW_NORMAL)
-        self.interaction.register_mouse_callback()
+        # Headless mode if source is a file and we are in evaluation
+        is_headless = isinstance(self.capture.source, str) and "test_videos" in self.capture.source
+        
+        if not is_headless:
+            cv2.namedWindow(self.window_name, cv2.WINDOW_NORMAL)
+            self.interaction.register_mouse_callback()
+            print(
+                f"\n[ZoomTracker] Mode: {self.mode}\n"
+                "  Left-click — select an object to track\n"
+                "  R          — reset selection\n"
+                "  Q          — quit\n"
+            )
 
-        print(
-            "\n[ZoomTracker] Controls:\n"
-            "  Left-click — select an object to track\n"
-            "  R          — reset selection\n"
-            "  S          — toggle zoom re-detect feedback loop\n"
-            "  Q          — quit\n"
-        )
-
+        f_idx = 0
         while True:
+            f_idx += 1
             t_start = time.time()
             ret, frame = self.capture.read()
             if not ret:
                 print("[ZoomTracker] Stream ended or read failure — exiting.")
                 break
 
-            self.logger.start_frame(self.capture.frame_count if hasattr(self.capture, 'frame_count') else int(time.time()*30))
+            self.logger.start_frame(f_idx)
 
             # ── Step 1: Full-frame detection (Pass 1) ─────────────────
             dets_full = self.detector.detect(frame)
 
             # ── Step 2: Zoomed re-detection (Pass 2 / feedback loop) ──
-            dets_zoom:   List[Detection]  = []
-            crop_region: Tuple            = (0, 0, self.capture.width, self.capture.height)
-            zoom_level:  float            = 1.0
-            zoom_view:   Optional[np.ndarray] = None
+            dets_zoom:   List[Dict[str, Any]]  = []
+            crop_region: Tuple                 = (0, 0, self.capture.width, self.capture.height)
+            zoom_level:  float                 = 1.0
+            zoom_view:   Optional[np.ndarray]  = None
 
-            if self._selected_obj is not None:
+            if self.mode == "adaptive_zoom" and self._selected_obj is not None:
                 zoom_view, crop_region, zoom_level = self.zoom_engine.apply_zoom(
                     frame, self._selected_obj
                 )
@@ -176,66 +182,94 @@ class ZoomTrackingPipeline:
                     dets_zoom = self.detector.detect(zoom_view)
 
             # ── Step 3: Merge + NMS + update tracker ──────────────────
-            dets_arr      = self._merge_and_nms(dets_full, dets_zoom, crop_region)
-            tracked_objs  = self.tracker.update(dets_arr, frame.shape)
+            if self.mode == "baseline":
+                # In baseline mode, we just take the first detection as the "tracked" object if any
+                tracked_objs = []
+                if dets_full:
+                    # Convert dict to something logger can use or just log directly
+                    # For metrics, we'll simulate a TrackedObject if we want to reuse visualization
+                    best_det = max(dets_full, key=lambda d: d["confidence"])
+                    x, y, w, h = best_det["bbox"]
+                    # Mocking a TrackedObject for the logger/visualizer
+                    obj = TrackedObject(
+                        track_id=0,
+                        bbox=np.array([x, y, x+w, y+h]),
+                        class_id=2, # Default to car
+                        class_name="car",
+                        confidence=best_det["confidence"]
+                    )
+                    tracked_objs = [obj]
+                    self._selected_obj = obj
+            else:
+                dets_arr      = self._merge_and_nms(dets_full, dets_zoom, crop_region)
+                tracked_objs  = self.tracker.update(dets_arr, frame.shape)
 
-            # ── Step 4: User interaction ───────────────────────────────
-            selected_id  = self.interaction.process_click(tracked_objs)
-            track_alive  = self.interaction.check_track_alive(tracked_objs)
+            # ── Step 4: Interaction / Auto-selection for Evaluation ───
+            selected_id = None
+            if is_headless:
+                # In headless evaluation, automatically select the first track if none selected
+                if self._selected_obj is None and tracked_objs:
+                    selected_id = tracked_objs[0].track_id
+                    self._selected_obj = tracked_objs[0]
+                elif self._selected_obj is not None:
+                    # Check if it's still alive
+                    alive = False
+                    for o in tracked_objs:
+                        if o.track_id == self._selected_obj.track_id:
+                            alive = True
+                            self._selected_obj = o
+                            selected_id = o.track_id
+                            break
+                    if not alive:
+                        self._selected_obj = None
+            else:
+                selected_id  = self.interaction.process_click(tracked_objs)
+                track_alive  = self.interaction.check_track_alive(tracked_objs)
+                
+                if selected_id != self._prev_selected_id:
+                    self.zoom_engine.reset()
+                    self._prev_selected_id = selected_id
 
-            # Reset zoom smoothing when selection changes
-            if selected_id != self._prev_selected_id:
-                self.zoom_engine.reset()
-                self._prev_selected_id = selected_id
+                self._selected_obj = None
+                if selected_id is not None and track_alive:
+                    for obj in tracked_objs:
+                        if obj.track_id == selected_id:
+                            self._selected_obj = obj
+                            break
 
-            # Update selected-object reference for next frame
-            self._selected_obj = None
-            if selected_id is not None and track_alive:
-                for obj in tracked_objs:
-                    if obj.track_id == selected_id:
-                        self._selected_obj = obj
-                        
-                        # Convert bbox [x1, y1, x2, y2] -> [x, y, w, h]
-                        x1, y1, x2, y2 = obj.bbox.tolist()
-                        w, h = x2 - x1, y2 - y1
-                        bbox_xywh = [float(x1), float(y1), float(w), float(h)]
-
-                        # Log telemetry for tracked object
-                        self.logger.log_detection(bbox=bbox_xywh, confidence=float(obj.confidence), track_id=obj.track_id)
-                        
-                        obj_size, center_err = FrameLogger.compute_derived_metrics(
-                            bbox=bbox_xywh, frame_width=self.capture.width, frame_height=self.capture.height
-                        )
-                        self.logger.log_metrics(obj_size, center_err)
-
-                        break
-
-            # Always log the current zoom level, even if target momentarily lost
-            self.logger.log_zoom(float(zoom_level))
-
-            # Measure latency and save frame logs
+            # ── Step 5: Logging ────────────────────────────────────────
+            if self._selected_obj is not None:
+                x1, y1, x2, y2 = self._selected_obj.bbox.tolist()
+                bbox_x1y1x2y2 = [float(x1), float(y1), float(x2), float(y2)]
+                self.logger.log_detection(bbox=bbox_x1y1x2y2, confidence=float(self._selected_obj.confidence), track_id=self._selected_obj.track_id)
+                obj_size, center_err = FrameLogger.compute_derived_metrics(
+                    bbox=bbox_x1y1x2y2, frame_width=self.capture.width, frame_height=self.capture.height
+                )
+                self.logger.log_metrics(obj_size, center_err)
+            
+            self.logger.log_zoom(float(zoom_level), crop_region=crop_region)
             latency_ms = (time.time() - t_start) * 1000.0
             self.logger.end_frame(latency_ms)
 
-            # ── Step 5: Visualize ──────────────────────────────────────
-            display = self._build_display(
-                frame, tracked_objs, selected_id, crop_region, zoom_level, zoom_view
-            )
-            self.interaction.draw_ui_hints(display)
-            cv2.imshow(self.window_name, display)
+            # ── Step 6: Visualize ──────────────────────────────────────
+            if not is_headless:
+                display = self._build_display(
+                    frame, tracked_objs, selected_id, crop_region, zoom_level, zoom_view
+                )
+                self.interaction.draw_ui_hints(display)
+                cv2.imshow(self.window_name, display)
 
-            # ── Key handling ───────────────────────────────────────────
-            key = cv2.waitKey(1) & 0xFF
-            if key == ord('q'):
-                break
-            elif key == ord('r'):
-                self.interaction.reset_selection()
-                self.zoom_engine.reset()
-                self._selected_obj = None
-            elif key == ord('s'):
-                self.enable_zoom_redetect = not self.enable_zoom_redetect
-                state = "ON" if self.enable_zoom_redetect else "OFF"
-                print(f"[ZoomTracker] Zoom re-detect feedback: {state}")
+                key = cv2.waitKey(1) & 0xFF
+                if key == ord('q'):
+                    break
+                elif key == ord('r'):
+                    self.interaction.reset_selection()
+                    self.zoom_engine.reset()
+                    self._selected_obj = None
+            else:
+                # In headless mode, we might want to exit after 500 frames or end of stream
+                if f_idx > 500: # Cap evaluation length
+                    break
 
         self.logger.flush()
         self.capture.release()
@@ -247,15 +281,13 @@ class ZoomTrackingPipeline:
 
     def _merge_and_nms(
         self,
-        dets_full: List[Detection],
-        dets_zoom: List[Detection],
+        dets_full: List[Dict[str, Any]],
+        dets_zoom: List[Dict[str, Any]],
         crop_region: Tuple,
     ) -> np.ndarray:
         """
         Combine full-frame and zoomed detections, remap zoomed ones to
         original coordinates, then suppress duplicates with NMS.
-
-        Returns (N, 6) array ready for TrackingModule.update().
         """
         arr_full = self.detector.to_bytetrack_input(dets_full)
 

@@ -25,7 +25,7 @@ Design decisions
 
 import numpy as np
 from dataclasses import dataclass
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Any
 from ultralytics import YOLO
 
 
@@ -41,10 +41,10 @@ class Detection:
 class DetectionModule:
     def __init__(
         self,
-        model_path:      str              = "yolov8n.pt",
+        model_path:      str              = "yolo26n.pt",
         conf_threshold:  float            = 0.35,
         iou_threshold:   float            = 0.45,
-        target_classes:  Optional[List[int]] = None,
+        target_classes:  Optional[List[int]] = [0, 2, 3], # Person (0), Car (2), Motorcycle (3)
         device:          str              = "cpu",
     ):
         self.model          = YOLO(model_path)
@@ -55,17 +55,9 @@ class DetectionModule:
         self.class_names: Dict[int, str] = self.model.names  # {0: "person", …}
 
     # ------------------------------------------------------------------
-    def detect(self, frame: np.ndarray) -> List[Detection]:
+    def detect(self, frame: np.ndarray) -> List[Dict[str, Any]]:
         """
-        Run inference on a single BGR frame.
-
-        Parameters
-        ----------
-        frame : np.ndarray  shape (H, W, 3), dtype uint8, BGR
-
-        Returns
-        -------
-        list of Detection — may be empty if nothing found
+        Run inference on a single BGR frame. Returns standardized dicts.
         """
         results = self.model.predict(
             frame,
@@ -76,28 +68,30 @@ class DetectionModule:
             verbose=False,
         )
 
-        detections: List[Detection] = []
+        detections: List[Dict[str, Any]] = []
         if results and results[0].boxes is not None:
             boxes = results[0].boxes
             for i in range(len(boxes)):
-                detections.append(Detection(
-                    bbox=boxes.xyxy[i].cpu().numpy().astype(np.float32),
-                    confidence=float(boxes.conf[i].cpu()),
-                    class_id=int(boxes.cls[i].cpu()),
-                    class_name=self.class_names.get(int(boxes.cls[i].cpu()), "?"),
-                ))
+                x1, y1, x2, y2 = boxes.xyxy[i].cpu().numpy().tolist()
+                w, h = x2 - x1, y2 - y1
+                
+                detections.append({
+                    "bbox": [float(x1), float(y1), float(w), float(h)],
+                    "confidence": float(boxes.conf[i].cpu()),
+                    "track_id": None # No track ID at detection stage
+                })
         return detections
 
-    # ------------------------------------------------------------------
-    def to_bytetrack_input(self, detections: List[Detection]) -> np.ndarray:
+    def to_bytetrack_input(self, detections: List[Dict[str, Any]]) -> np.ndarray:
         """
         Convert detections to a (N, 6) float32 array:
             [x1, y1, x2, y2, confidence, class_id]
-        Returns empty (0, 6) array when there are no detections.
         """
         if not detections:
             return np.empty((0, 6), dtype=np.float32)
-        return np.array(
-            [[*d.bbox, d.confidence, float(d.class_id)] for d in detections],
-            dtype=np.float32,
-        )
+        
+        arr = []
+        for d in detections:
+            x, y, w, h = d["bbox"]
+            arr.append([x, y, x + w, y + h, d["confidence"], 0.0]) # Default class 0 for now as tracker uses it
+        return np.array(arr, dtype=np.float32)

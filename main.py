@@ -28,8 +28,8 @@ def parse_args() -> argparse.Namespace:
         help="Video source: webcam index (integer string), file path, or RTSP URL.",
     )
     p.add_argument(
-        "--model", default="yolov8n.pt",
-        help="Ultralytics YOLO model.  'yolov8n.pt' is auto-downloaded on first run.",
+        "--model", default="yolo26n.pt",
+        help="Ultralytics YOLO model.  'yolo26n.pt' is the default for this version.",
     )
     p.add_argument(
         "--model-version", default=None,
