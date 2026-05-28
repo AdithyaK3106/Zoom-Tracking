@@ -39,6 +39,14 @@ graph TD
 
 ---
 
+## ⚡ Model Optimization & NMS-Free Inference
+
+The **YOLO26n** model incorporates architectural optimizations designed to eliminate standard post-processing bottlenecks:
+* **Model-Level NMS-Free Inference**: YOLO26n leverages a dual-label assignment training strategy to achieve NMS-free inference. This removes the model's internal Non-Maximum Suppression post-processing overhead, which is traditionally a major CPU latency bottleneck.
+* **Pipeline-Level Merging NMS**: Note that while the detector itself is NMS-free, our two-pass zoom pipeline still utilizes a lightweight NMS pass (`cv2.dnn.NMSBoxes`) in `modules/pipeline.py`. This is necessary to deduplicate coordinates when merging detections from the two independent passes (the full frame and the zoomed crop) which both detect the same target. Because this operates on only a few bounding boxes, its computational overhead is negligible.
+
+---
+
 ## 📂 File Structure
 
 ```
