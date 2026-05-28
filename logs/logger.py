@@ -23,7 +23,7 @@ class FrameLogger:
         Initialize the logger.
         
         Args:
-            model_version (str): Identifier for the model/experiment (e.g. 'v1', 'yolov8n').
+            model_version (str): Identifier for the model/experiment (e.g. 'v1', 'yolo26n').
                                  This will be used as the filename.
             log_dir (str): Base directory for logs.
             buffer_size (int): Number of frames to buffer in memory before flushing to disk.

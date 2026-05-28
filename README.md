@@ -1,4 +1,4 @@
-# Monocular Zoom-Tracking Pipeline with YOLOv8 & ByteTrack
+# Monocular Zoom-Tracking Pipeline with YOLO26 & ByteTrack
 
 An end-to-end, high-performance, single-threaded **monocular zoom-tracking pipeline** designed to dynamically center and magnify target objects (webcams, local video files, or RTSP feeds). The system uses the target's relative bounding box area as a depth proxy, applying an Exponential Moving Average (EMA) for temporal smoothing to simulate continuous camera zoom control.
 
@@ -11,7 +11,7 @@ The pipeline processes input frames using a **two-pass feedback loop** to optimi
 ```mermaid
 graph TD
     A[VideoCapture: cv2.VideoCapture] -->|BGR Frame| B[ZoomTrackingPipeline]
-    B -->|Pass 1: Full Frame| C[DetectionModule: YOLOv8]
+    B -->|Pass 1: Full Frame| C[DetectionModule: YOLO26]
     C -->|Bboxes & Confidences| D{Is Target Tracked?}
     
     D -->|Yes| E[ZoomEngine: Crop & Resize]
@@ -78,8 +78,7 @@ pip install -r requirements.txt
 ```
 
 ### 2. Model Weights
-The system defaults to using standard YOLOv8 nano models. Ultralytics will automatically download default weights (like `yolov8n.pt`) on the first run.
-If you have custom trained weights (e.g. `yolo26n.pt`), place them in the project root folder.
+The system defaults to using the custom-trained YOLO26 weights (`yolo26n.pt`). Please ensure `yolo26n.pt` is placed in the project root folder.
 
 ### 3. Test Videos & Evaluation Data
 To run the evaluation benchmarks, you should place your test `.mp4` video files under the `data/test_videos/` directory as defined in `evaluation/configs/eval_config.yaml`.
@@ -127,9 +126,9 @@ python main.py --classes 0 2 3
 ## 📊 Running Evaluations & Generating Benchmarks
 
 The research evaluation framework compares tracking performance across three modes:
-1. **Baseline**: YOLOv8 detection only (Mode A).
-2. **Tracking**: YOLOv8 + ByteTrack (Mode B).
-3. **Adaptive Zoom**: YOLOv8 + ByteTrack + Two-Pass Zoom feedback (Mode C).
+1. **Baseline**: YOLO26 detection only (Mode A).
+2. **Tracking**: YOLO26 + ByteTrack (Mode B).
+3. **Adaptive Zoom**: YOLO26 + ByteTrack + Two-Pass Zoom feedback (Mode C).
 
 To execute the full benchmark run:
 ```bash

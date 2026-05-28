@@ -33,7 +33,7 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument(
         "--model-version", default=None,
-        help="Explicit version name for the model log (e.g. 'yolov8n'). Defaults to filename without extension.",
+        help="Explicit version name for the model log (e.g. 'yolo26n'). Defaults to filename without extension.",
     )
     p.add_argument(
         "--conf", type=float, default=0.35,
