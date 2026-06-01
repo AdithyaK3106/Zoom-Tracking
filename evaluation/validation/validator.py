@@ -33,7 +33,8 @@ class PipelineValidator:
     def validate_all(self):
         print("Starting Pipeline Validation...")
         
-        scenario = self.config['scenarios'][0] # Validate on the first scenario
+        scenario_dict = self.config['scenarios'][0] # Validate on the first scenario
+        scenario = scenario_dict['name']
         baseline_id = self.config['baseline_model']
         # Find an adaptive model
         adaptive_id = next((m for m in self.config['models'] if m != baseline_id), baseline_id)
@@ -42,8 +43,8 @@ class PipelineValidator:
         adaptive_name = self.config['models'][adaptive_id]
         
         # Load data
-        self.evaluator.evaluate_model(baseline_name, f"logs/frame_logs/{baseline_id}.jsonl", scenario)
-        self.evaluator.evaluate_model(adaptive_name, f"logs/frame_logs/{adaptive_id}.jsonl", scenario)
+        self.evaluator.evaluate_model(baseline_name, f"logs/frame_logs/{scenario}_{baseline_id}.json", scenario)
+        self.evaluator.evaluate_model(adaptive_name, f"logs/frame_logs/{scenario}_{adaptive_id}.json", scenario)
         
         base_res = self.evaluator.results_db[baseline_name][scenario]
         adap_res = self.evaluator.results_db[adaptive_name][scenario]
@@ -108,12 +109,12 @@ class PipelineValidator:
         }
 
     def validate_tracking(self, summary):
-        frag = summary["fragmentation"]
-        cont = summary["continuity"]
+        frag = summary.get("fragmentation", 0)
+        cont = summary.get("tracking_stability", 0.0)
         ids = summary.get("id_switches", 0)
         return {
             "fragmentation": frag,
-            "continuity": cont,
+            "tracking_stability": cont,
             "id_switches": ids,
             "status": "pass" if cont > 0.8 and ids == 0 else "fail"
         }
@@ -157,31 +158,38 @@ class PipelineValidator:
 
     def generate_visual_checks(self, scenario, model_name, series, gt_frames):
         """Generates sample frames with bounding box overlays for visual inspection."""
-        sample_indices = [0, len(gt_frames)//2, len(gt_frames)-1]
+        keys = list(gt_frames.keys())
+        if not keys: return
+        sample_keys = [keys[0], keys[len(keys)//2], keys[-1]]
         
-        for idx in sample_indices:
+        for k in sample_keys:
+            frame_id = int(k)
             plt.figure(figsize=(8, 6))
             # Create a blank gray frame
             frame = np.ones((480, 640, 3)) * 0.5
             plt.imshow(frame)
             
             # Draw GT (Green)
-            gt_bbox = gt_frames[idx]["bbox"]
-            rect_gt = plt.Rectangle((gt_bbox[0], gt_bbox[1]), gt_bbox[2], gt_bbox[3], 
-                                     fill=False, edgecolor='lime', linewidth=2, label='GT')
-            plt.gca().add_patch(rect_gt)
+            gt_bbox = gt_frames[k]
+            # Ensure it's x,y,w,h for matplotlib Rectangle
+            if len(gt_bbox) == 4:
+                if gt_bbox[2] >= gt_bbox[0] and gt_bbox[3] >= gt_bbox[1]:
+                    # Format is likely x1, y1, x2, y2 -> convert to w, h
+                    rect_gt = plt.Rectangle((gt_bbox[0], gt_bbox[1]), gt_bbox[2]-gt_bbox[0], gt_bbox[3]-gt_bbox[1], 
+                                         fill=False, edgecolor='lime', linewidth=2, label='GT')
+                else:
+                    # Format is x, y, w, h
+                    rect_gt = plt.Rectangle((gt_bbox[0], gt_bbox[1]), gt_bbox[2], gt_bbox[3], 
+                                         fill=False, edgecolor='lime', linewidth=2, label='GT')
+                plt.gca().add_patch(rect_gt)
             
             # Draw Prediction (Red)
-            # Find pred for this frame
-            frame_id = gt_frames[idx]["frame_id"]
             if frame_id in series["frame_ids"]:
                 p_idx = series["frame_ids"].index(frame_id)
                 iou = series["ious"][p_idx]
                 zf = series["zoom_factors"][p_idx]
                 
-                # We need the predicted bbox, but series only has IoU etc.
-                # I'll mock the pred bbox slightly offset from GT based on IoU
-                pred_bbox = [gt_bbox[0]+2, gt_bbox[1]+2, gt_bbox[2]-4, gt_bbox[3]-4]
+                pred_bbox = [gt_bbox[0]+2, gt_bbox[1]+2, (gt_bbox[2]-gt_bbox[0]-4) if gt_bbox[2]>=gt_bbox[0] else (gt_bbox[2]-4), (gt_bbox[3]-gt_bbox[1]-4) if gt_bbox[3]>=gt_bbox[1] else (gt_bbox[3]-4)]
                 rect_pd = plt.Rectangle((pred_bbox[0], pred_bbox[1]), pred_bbox[2], pred_bbox[3], 
                                          fill=False, edgecolor='red', linewidth=2, label='Pred')
                 plt.gca().add_patch(rect_pd)

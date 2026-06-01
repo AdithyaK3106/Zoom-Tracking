@@ -137,6 +137,11 @@ class ZoomTrackingPipeline:
         # ── Pipeline state ────────────────────────────────────────────
         self._selected_obj:     Optional[TrackedObject] = None
         self._prev_selected_id: Optional[int]           = None
+        self.target_lost_counter: int                   = 0
+        self.last_valid_zoom:     float                 = 1.0
+        self.loss_hold_frames:    int                   = 15
+        self.decay_rate:          float                 = 0.95
+        self.target_loss_state:   str                   = "none"
 
     # ==================================================================
     def run(self):
@@ -173,13 +178,36 @@ class ZoomTrackingPipeline:
             crop_region: Tuple                 = (0, 0, self.capture.width, self.capture.height)
             zoom_level:  float                 = 1.0
             zoom_view:   Optional[np.ndarray]  = None
+            metrics_zoom: Dict[str, float]     = {"area_zoom": 1.0, "motion_zoom": 1.0, "motion_speed": 0.0}
 
-            if self.mode == "adaptive_zoom" and self._selected_obj is not None:
-                zoom_view, crop_region, zoom_level = self.zoom_engine.apply_zoom(
-                    frame, self._selected_obj
-                )
-                if self.enable_zoom_redetect:
-                    dets_zoom = self.detector.detect(zoom_view)
+            if self.mode == "adaptive_zoom":
+                if self._selected_obj is not None:
+                    self.target_lost_counter = 0
+                    self.target_loss_state = "tracking"
+                    zoom_view, crop_region, zoom_level, metrics_zoom = self.zoom_engine.apply_zoom(
+                        frame, self._selected_obj
+                    )
+                    self.last_valid_zoom = zoom_level
+                    if self.enable_zoom_redetect:
+                        dets_zoom = self.detector.detect(zoom_view)
+                else:
+                    if self._prev_selected_id is not None:
+                        self.target_lost_counter += 1
+                        if self.target_lost_counter <= self.loss_hold_frames:
+                            self.target_loss_state = "holding"
+                            zoom_level = self.last_valid_zoom
+                        else:
+                            self.target_loss_state = "decaying"
+                            zoom_level = self.decay_rate * self.last_valid_zoom + (1.0 - self.decay_rate) * 1.0
+                            self.last_valid_zoom = zoom_level
+                            
+                        zoom_view, crop_region, zoom_level = self.zoom_engine.apply_zoom_loss(frame, zoom_level)
+                        if self.enable_zoom_redetect:
+                            dets_zoom = self.detector.detect(zoom_view)
+                    else:
+                        self.target_loss_state = "none"
+
+            self.logger.log_loss_state(self.target_loss_state, self.target_lost_counter)
 
             # ── Step 3: Merge + NMS + update tracker ──────────────────
             if self.mode == "baseline":
@@ -229,6 +257,8 @@ class ZoomTrackingPipeline:
                 if selected_id != self._prev_selected_id:
                     self.zoom_engine.reset()
                     self._prev_selected_id = selected_id
+                    self.target_lost_counter = 0
+                    self.target_loss_state = "tracking"
 
                 self._selected_obj = None
                 if selected_id is not None and track_alive:
@@ -247,7 +277,10 @@ class ZoomTrackingPipeline:
                 )
                 self.logger.log_metrics(obj_size, center_err)
             
-            self.logger.log_zoom(float(zoom_level), crop_region=crop_region)
+            self.logger.log_zoom(float(zoom_level), crop_region=crop_region,
+                                 area_zoom=metrics_zoom.get("area_zoom", 1.0),
+                                 motion_zoom=metrics_zoom.get("motion_zoom", 1.0),
+                                 motion_speed=metrics_zoom.get("motion_speed", 0.0))
             latency_ms = (time.time() - t_start) * 1000.0
             self.logger.end_frame(latency_ms)
 

@@ -2,36 +2,36 @@
   "data_integrity": {
     "frame_match": true,
     "missing_fields": [],
-    "null_values": 0,
-    "status": "pass"
+    "null_values": 32,
+    "status": "fail"
   },
   "detection_validation": {
-    "iou_mean": 0.898511198506783,
-    "status": "pass"
+    "iou_mean": 0.43491777366106993,
+    "status": "fail"
   },
   "tracking_validation": {
-    "fragmentation": 0,
-    "continuity": 1.0,
+    "fragmentation": 4,
+    "tracking_stability": 0.3230088495575221,
     "id_switches": 0,
-    "status": "pass"
+    "status": "fail"
   },
   "zoom_validation": {
-    "correlation": 1.0,
-    "jerk": 1.942890293094024e-16,
+    "correlation": 0.0,
+    "jerk": 0.0,
     "status": "pass"
   },
   "feedback_validation": {
-    "delta_iou": 0.08655612566748683,
+    "delta_iou": 0.17948755883921824,
     "status": "pass"
   },
   "temporal_validation": {
-    "lag_corr": 0.7948486680116015,
-    "status": "pass"
+    "lag_corr": 0.0,
+    "status": "fail"
   },
   "system_validation": {
     "metrics_valid": true,
     "pipeline_complete": true,
     "status": "pass"
   },
-  "overall_status": "pass"
+  "overall_status": "fail"
 }

@@ -70,6 +70,8 @@ class EvaluationMetrics:
         object_sizes = []
         occlusions = []
         frame_ids = []
+        motion_speeds = []
+        target_loss_states = []
 
         fragmentation_count = 0
         current_streak = 0
@@ -95,6 +97,8 @@ class EvaluationMetrics:
             ce = pred.get("center_error", 0.0)
             lat = pred.get("latency_ms", 0.0)
             osize = pred.get("object_size", 0.0)
+            mspeed = pred.get("motion_speed", 0.0)
+            tstate = pred.get("target_loss_state", "none")
 
             # ── Coordinate Standardization ──────────────────────────
             # GT Standardization: Ensure [x1, y1, x2, y2]
@@ -140,6 +144,8 @@ class EvaluationMetrics:
             object_sizes.append(osize)
             occlusions.append(is_occluded)
             frame_ids.append(frame_id)
+            motion_speeds.append(mspeed)
+            target_loss_states.append(tstate)
 
             # False tracking
             if tid is not None and iou < 0.1 and not is_occluded:
@@ -170,6 +176,11 @@ class EvaluationMetrics:
         ce_np = np.array([c if c is not None else 0.0 for c in center_errors])
         lat_np = np.array([l if l is not None else 0.0 for l in latencies])
         size_np = np.array([s if s is not None else 0.0 for s in object_sizes])
+        ms_np = np.array([m if m is not None else 0.0 for m in motion_speeds])
+
+        motion_variance = float(np.var(ms_np)) if len(ms_np) > 0 else 0.0
+        avg_motion_speed = float(np.mean(ms_np)) if len(ms_np) > 0 else 0.0
+        motion_stability = 1.0 / (1.0 + motion_variance)
 
         # -------------------------------
         # BASIC METRICS
@@ -187,7 +198,10 @@ class EvaluationMetrics:
             "center_error": float(np.mean(ce_np)),
             "latency": float(np.mean(lat_np)),
             "detection_recovery_rate": self.compute_detection_recovery_rate(ious),
-            "zoom_responsiveness": self.compute_zoom_responsiveness(zoom_factors)
+            "zoom_responsiveness": self.compute_zoom_responsiveness(zoom_factors),
+            "motion_variance": motion_variance,
+            "avg_motion_speed": avg_motion_speed,
+            "motion_stability": motion_stability
         }
 
         # -------------------------------
@@ -200,6 +214,9 @@ class EvaluationMetrics:
         summary.update(self.compute_control_smoothness(zoom_factors))
         summary.update(self.compute_temporal_causality(zoom_factors, ious))
         summary.update(self.compute_failure_modes(ious, object_sizes, occlusions))
+        summary["avg_recovery_time"] = recovery_results.get("avg_recovery_time", 0.0)
+        summary["max_recovery_time"] = recovery_results.get("max_recovery_time", 0.0)
+        summary["recovery_success_rate"] = recovery_results.get("recovery_success_rate", 1.0)
 
         # -------------------------------
         # SERIES DATA (FOR PLOTTING)
@@ -212,6 +229,8 @@ class EvaluationMetrics:
             "object_sizes": object_sizes,
             "confidences": confidences,
             "occlusions": occlusions,
+            "motion_speeds": motion_speeds,
+            "target_loss_states": target_loss_states,
             "recovery_events": recovery_results["recovery_events"],
             "recovery_times": recovery_results["recovery_times"]
         }
@@ -256,22 +275,31 @@ class EvaluationMetrics:
         recovery_events = []
         lost = False
         start_idx = 0
+        drops = 0
+        recoveries = 0
 
         for i, iou in enumerate(ious):
             if iou < self.iou_threshold:
                 if not lost:
                     lost = True
                     start_idx = i
+                    drops += 1
             else:
                 if lost:
                     duration = i - start_idx
                     recovery_times.append(duration)
                     recovery_events.append(i) # recovery happened at frame i
                     lost = False
+                    recoveries += 1
+
+        avg_rec_time = float(np.mean(recovery_times)) if recovery_times else 0.0
+        max_rec_time = int(np.max(recovery_times)) if recovery_times else 0
+        success_rate = recoveries / drops if drops > 0 else 1.0
 
         return {
-            "avg_recovery_frames": float(np.mean(recovery_times)) if recovery_times else 0.0,
-            "max_recovery_frames": int(np.max(recovery_times)) if recovery_times else 0,
+            "avg_recovery_time": avg_rec_time,
+            "max_recovery_time": max_rec_time,
+            "recovery_success_rate": float(success_rate),
             "recovery_times": recovery_times,
             "recovery_events": recovery_events
         }

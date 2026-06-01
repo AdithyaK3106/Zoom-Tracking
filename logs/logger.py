@@ -65,10 +65,15 @@ class FrameLogger:
             "confidence": None,
             "track_id": None,
             "zoom_factor": 1.0,
+            "area_zoom": 1.0,
+            "motion_zoom": 1.0,
+            "motion_speed": 0.0,
             "crop_region": None, # [x1, y1, x2, y2] in original frame
             "object_size": None,
             "center_error": None,
-            "latency_ms": None
+            "latency_ms": None,
+            "target_loss_state": "none",
+            "target_lost_counter": 0
         }
 
     def log_detection(self, bbox: List[float], confidence: float, track_id: int):
@@ -84,7 +89,7 @@ class FrameLogger:
         self.current_frame["confidence"] = confidence
         self.current_frame["track_id"] = track_id
 
-    def log_zoom(self, zoom_factor: float, crop_region: Optional[Tuple[int, int, int, int]] = None):
+    def log_zoom(self, zoom_factor: float, crop_region: Optional[Tuple[int, int, int, int]] = None, area_zoom: float = 1.0, motion_zoom: float = 1.0, motion_speed: float = 0.0):
         """
         Log camera control / scaling metrics.
         
@@ -93,8 +98,15 @@ class FrameLogger:
             crop_region (Tuple): (x1, y1, x2, y2) in original frame coordinates.
         """
         self.current_frame["zoom_factor"] = zoom_factor
+        self.current_frame["area_zoom"] = area_zoom
+        self.current_frame["motion_zoom"] = motion_zoom
+        self.current_frame["motion_speed"] = motion_speed
         if crop_region is not None:
             self.current_frame["crop_region"] = list(crop_region)
+
+    def log_loss_state(self, state: str, counter: int):
+        self.current_frame["target_loss_state"] = state
+        self.current_frame["target_lost_counter"] = counter
 
     def log_metrics(self, object_size: float, center_error: float):
         """
@@ -143,8 +155,9 @@ class FrameLogger:
                 if not self._csv_header_written:
                     headers = [
                         "frame_id", "timestamp", "x1", "y1", "x2", "y2",
-                        "confidence", "track_id", "zoom_factor", "object_size", 
-                        "center_error", "latency_ms"
+                        "confidence", "track_id", "zoom_factor", "area_zoom", "motion_zoom",
+                        "motion_speed", "object_size", 
+                        "center_error", "latency_ms", "target_loss_state", "target_lost_counter"
                     ]
                     f.write(",".join(headers) + "\n")
                     self._csv_header_written = True
@@ -156,8 +169,10 @@ class FrameLogger:
                         frame.get('frame_id'), frame.get('timestamp'),
                         b[0], b[1], b[2], b[3], # flattened bbox
                         frame.get('confidence'), frame.get('track_id'),
-                        frame.get('zoom_factor'), frame.get('object_size'),
-                        frame.get('center_error'), frame.get('latency_ms')
+                        frame.get('zoom_factor'), frame.get('area_zoom', 1.0),
+                        frame.get('motion_zoom', 1.0), frame.get('motion_speed', 0.0),
+                        frame.get('object_size'), frame.get('center_error'), frame.get('latency_ms'),
+                        frame.get('target_loss_state', 'none'), frame.get('target_lost_counter', 0)
                     ]
                     f.write(",".join(str(val) if val is not None else "" for val in row) + "\n")
 

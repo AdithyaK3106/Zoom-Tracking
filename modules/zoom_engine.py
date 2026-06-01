@@ -59,6 +59,10 @@ class ZoomEngine:
     REFERENCE_RATIO  = 0.08   # bbox/frame area that maps to 1× zoom
     PADDING_FACTOR   = 2.5    # crop is at least PADDING_FACTOR × bbox dims
     SMOOTH_ALPHA     = 0.12   # EMA weight for new values (lower = smoother)
+    AREA_WEIGHT      = 0.6
+    MOTION_WEIGHT    = 0.4
+    MOTION_ALPHA     = 0.1
+    MOTION_SCALE     = 0.05
 
     def __init__(
         self,
@@ -69,6 +73,10 @@ class ZoomEngine:
         reference_ratio: float = REFERENCE_RATIO,
         padding_factor:  float = PADDING_FACTOR,
         smooth_alpha:    float = SMOOTH_ALPHA,
+        area_weight:     float = AREA_WEIGHT,
+        motion_weight:   float = MOTION_WEIGHT,
+        motion_alpha:    float = MOTION_ALPHA,
+        motion_scale:    float = MOTION_SCALE,
     ):
         self.fw             = frame_width
         self.fh             = frame_height
@@ -78,11 +86,18 @@ class ZoomEngine:
         self.reference_ratio = reference_ratio
         self.padding_factor = padding_factor
         self.smooth_alpha   = smooth_alpha
+        self.area_weight    = area_weight
+        self.motion_weight  = motion_weight
+        self.motion_alpha   = motion_alpha
+        self.motion_scale   = motion_scale
 
         # Smoothing state — reset when switching tracked object
         self._s_zoom: float           = 1.0
         self._s_cx:   Optional[float] = None
         self._s_cy:   Optional[float] = None
+        self._prev_cx: Optional[float] = None
+        self._prev_cy: Optional[float] = None
+        self._s_motion: float         = 0.0
 
     # ------------------------------------------------------------------
     def compute_zoom(self, obj: TrackedObject) -> float:
@@ -99,7 +114,7 @@ class ZoomEngine:
         self,
         frame: np.ndarray,
         obj:   TrackedObject,
-    ) -> Tuple[np.ndarray, Tuple[int, int, int, int], float]:
+    ) -> Tuple[np.ndarray, Tuple[int, int, int, int], float, dict]:
         """
         Main entry point.  Computes smoothed zoom, crops, and resizes.
 
@@ -113,10 +128,30 @@ class ZoomEngine:
         zoomed_frame : BGR frame same size as input, cropped+resized
         crop_region  : (x1, y1, x2, y2) in *original* frame pixels
         zoom_level   : smoothed zoom scalar applied this frame
+        metrics      : dictionary with area_zoom, motion_zoom, motion_speed
         """
-        # ── Smooth zoom level ──────────────────────────────────────────
-        raw_zoom     = self.compute_zoom(obj)
-        self._s_zoom = self._ema(raw_zoom, self._s_zoom)
+        # ── Compute Area and Motion Zoom ───────────────────────────────
+        area_zoom = self.compute_zoom(obj)
+
+        cx, cy = obj.bbox_center
+        if self._prev_cx is not None and self._prev_cy is not None:
+            dist = np.sqrt((cx - self._prev_cx)**2 + (cy - self._prev_cy)**2)
+            motion_speed = float(dist)
+        else:
+            motion_speed = 0.0
+
+        self._prev_cx, self._prev_cy = cx, cy
+
+        # EMA of motion
+        self._s_motion = self.motion_alpha * motion_speed + (1.0 - self.motion_alpha) * self._s_motion
+
+        # Normalize motion speed into zoom factor
+        motion_zoom = float(np.clip(1.0 + self._s_motion * self.motion_scale, self.min_zoom, self.max_zoom))
+
+        # Blended final zoom
+        final_zoom = self.area_weight * area_zoom + self.motion_weight * motion_zoom
+
+        self._s_zoom = self._ema(final_zoom, self._s_zoom)
         zoom         = self._s_zoom
 
         # ── Smooth crop center ─────────────────────────────────────────
@@ -151,8 +186,44 @@ class ZoomEngine:
 
         # ── Crop and resize back to original frame dimensions ──────────
         crop = frame[y1:y2, x1:x2]
+        
+        metrics = {
+            "area_zoom": area_zoom,
+            "motion_zoom": motion_zoom,
+            "motion_speed": motion_speed
+        }
+        
         if crop.size == 0:
-            return frame.copy(), (0, 0, self.fw, self.fh), 1.0
+            return frame.copy(), (0, 0, self.fw, self.fh), 1.0, metrics
+
+        zoomed = cv2.resize(crop, (self.fw, self.fh), interpolation=cv2.INTER_LINEAR)
+        return zoomed, (x1, y1, x2, y2), zoom, metrics
+
+    # ------------------------------------------------------------------
+    def apply_zoom_loss(self, frame: np.ndarray, zoom: float) -> Tuple[np.ndarray, Tuple[int, int, int, int], float]:
+        """Apply zoom for target loss fallback, using last known crop center."""
+        self._s_zoom = zoom
+        scx, scy = self._s_cx, self._s_cy
+        if scx is None or scy is None:
+            scx, scy = self.fw / 2, self.fh / 2
+            
+        crop_w = max(self.fw / max(zoom, 1.0), 10.0)
+        crop_h = max(self.fh / max(zoom, 1.0), 10.0)
+        
+        crop_w = min(crop_w, self.fw)
+        crop_h = min(crop_h, self.fh)
+
+        x1 = int(np.clip(scx - crop_w / 2, 0, self.fw - 1))
+        y1 = int(np.clip(scy - crop_h / 2, 0, self.fh - 1))
+        x2 = int(np.clip(x1  + crop_w,     1, self.fw))
+        y2 = int(np.clip(y1  + crop_h,     1, self.fh))
+
+        if x2 - x1 < 4: x2 = min(x1 + 4, self.fw)
+        if y2 - y1 < 4: y2 = min(y1 + 4, self.fh)
+
+        crop = frame[y1:y2, x1:x2]
+        if crop.size == 0:
+            return frame.copy(), (0, 0, self.fw, self.fh), zoom
 
         zoomed = cv2.resize(crop, (self.fw, self.fh), interpolation=cv2.INTER_LINEAR)
         return zoomed, (x1, y1, x2, y2), zoom
@@ -200,6 +271,9 @@ class ZoomEngine:
         self._s_zoom = 1.0
         self._s_cx   = None
         self._s_cy   = None
+        self._prev_cx = None
+        self._prev_cy = None
+        self._s_motion = 0.0
 
     # ------------------------------------------------------------------
     def _ema(self, new_val: float, old_val: float) -> float:

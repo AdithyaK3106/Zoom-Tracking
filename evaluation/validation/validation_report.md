@@ -1,38 +1,38 @@
 # Pipeline Validation Report
 
-**Overall Status:** PASS
+**Overall Status:** FAIL
 
 ## Data Integrity
-**Status:** PASS
+**Status:** FAIL
 
 ```json
 {
   "frame_match": true,
   "missing_fields": [],
-  "null_values": 0,
-  "status": "pass"
+  "null_values": 32,
+  "status": "fail"
 }
 ```
 
 ## Detection Validation
-**Status:** PASS
+**Status:** FAIL
 
 ```json
 {
-  "iou_mean": 0.898511198506783,
-  "status": "pass"
+  "iou_mean": 0.43491777366106993,
+  "status": "fail"
 }
 ```
 
 ## Tracking Validation
-**Status:** PASS
+**Status:** FAIL
 
 ```json
 {
-  "fragmentation": 0,
-  "continuity": 1.0,
+  "fragmentation": 4,
+  "tracking_stability": 0.3230088495575221,
   "id_switches": 0,
-  "status": "pass"
+  "status": "fail"
 }
 ```
 
@@ -41,8 +41,8 @@
 
 ```json
 {
-  "correlation": 1.0,
-  "jerk": 1.942890293094024e-16,
+  "correlation": 0.0,
+  "jerk": 0.0,
   "status": "pass"
 }
 ```
@@ -52,18 +52,18 @@
 
 ```json
 {
-  "delta_iou": 0.08655612566748683,
+  "delta_iou": 0.17948755883921824,
   "status": "pass"
 }
 ```
 
 ## Temporal Validation
-**Status:** PASS
+**Status:** FAIL
 
 ```json
 {
-  "lag_corr": 0.7948486680116015,
-  "status": "pass"
+  "lag_corr": 0.0,
+  "status": "fail"
 }
 ```
 
@@ -81,5 +81,5 @@
 ## Visual Check Samples
 
 ![check_frame_0.png](visual_checks/check_frame_0.png)
-![check_frame_5.png](visual_checks/check_frame_5.png)
-![check_frame_9.png](visual_checks/check_frame_9.png)
+![check_frame_339.png](visual_checks/check_frame_339.png)
+![check_frame_677.png](visual_checks/check_frame_677.png)

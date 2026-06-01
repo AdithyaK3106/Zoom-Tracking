@@ -1,0 +1,227 @@
+Proposed System/Application paper
+Monocular single-object  zoom tracking using YOLO26.
+
+
+Authors:
+Ayushman Devgun, Suraj V, Aditya K
+
+Abstract (250 to 500 words)
+
+The effectiveness of real-time object tracking systems is inherently constrained by their reliance on a fixed camera field of view, particularly when targets experience significant scale or depth changes.  This paper proposes a monocular single object tracking framework with adaptive auto-zoom that dynamically changes the effective field of view (FOV) to maintain a constant scale of the object while tracking it. The proposed approach combines YOLO for object based detection with ByteTrack for tracking and user-selected object target selection mechanism. The automatic dynamic zoom adjuster utilised inverse bounding box area for depth perception with centroid motion as motion-parallax cues to both smooth out and maintain a constant scale. This ensures stability.Experimental observations demonstrate stable zoom behavior and robust target tracking, indicating that the proposed framework has broad potential and is well suited for a wide range of resource-constrained computer vision applications. 
+
+
+Keywords
+Single-Object Tracking, Adaptive Digital Zoom, Zoom-Tracking, Monocular Vision, YOLO, ByteTrack, Real-Time Computer Vision, Human-in-the-Loop Tracking.
+
+
+Introduction
+In computer vision, visual object tracking is a fundamental task with applications spanning from robotics to cinematography to human-computer interactions and autonomous systems. Recent advances in deep learning have significantly progressed computer vision to run on commodity hardware, especially single-stage detectors such as YOLO whose revolutionary new methods unlocked a wide plethora of applications. However, conventional tracking pipelines assume a fixed camera FOV, which can result in poor visual interpretation of targets undergoing significant changes in depth or scale.(last sentence rewrite to something like “poor visual interpretation”)
+
+Practically speaking, targets are hardly ever stationary, they move constantly towards and away from the camera, causing substantial variation in their apparent size. Without dynamic zoom control, as targets move further away, it becomes increasingly difficult to observe and infer meaningful visual detail, while nearby targets may exceed the frame boundaries, further increasing the likelihood of tracking failure. 
+
+There exists a gap between robust real-time tracking and adaptive camera zoom control in monocular systems. There is limited documented research especially on integrating single object tracking and adaptive zoom control relying only on image-based cues (using inverse-bounding box) rather than relying on expensive or computationally expensive optical zoom hardware and software.
+Our approach proposes to bridge this gap with a framework that combines all the previously mentioned features using YOLO-based object detection and ByteTrack-based identity tracking along with a closed-loop auto zoom controller. The zoom controller works on two complementary cues: the area of the tracked object’s bounding box as a proxy for relative depth and centroid displacement as an indicator of motion and parallax. In addition, there is a human in the loop initialization mechanism, where the user can choose which target they wish to track.
+
+=>Related work/ Lit review
+
+Methodology
+Our proposed system performs real-time single-object zoom-tracking using monocular RGB cameras. The framework integrates object detection with user-guided target selection and a motion aware zoom controller to dynamically adjust the field of view of the selected object. The objective of the systems is to maintain a consistent image size of the selected object. 
+
+Now, unlike traditional tracking systems that operate at a fixed field of view, the proposed method continuously adapts to maintain the same scale of the object by digitally zooming at the tracked object.
+
+
+System Overview
+The pipeline consists of 3 modules that execute sequentially for each video frame:
+
+Object detection
+Interactive target selection
+Adaptive zoom control
+
+State is maintained across frames via Kalman filters in the tracker and exponential moving averages (EMAs) in the zoom module. The Digital zoom is realised through sub frame cropping and bilinear upsampling, requires no hardware lens actuation thus making the system compatible with any standard camera.
+
+Object Detection
+
+Implemented through the ultralytics framework, object detection is done by the YOLO-based single object detector. We utilise YOLO for it;s balance between speed and accuracy in detection. In addition we use ByteTrack to help identify and track the target through the frames. It works by assigning a unique tracking identifier to each detected object and maintains identity consistency even while confidence levels fluctuate.
+Interactive Target Selection
+The system  employs a HITL(Human-in-the-loop) strategy to select the target object, in contrast to automatically tracking all detected objects which would increase the computational cost. We also have stripped the classification engine entirely, the systems whether there are objects in the frame or not but does not specifically assign what class they belong to. How does it work? The user selects a specified object by clicking on the bounding box from the displayed frame.
+
+When the mouse clicks, firstly the systems check if the click is close to any detected bounding box. If there is a match, the system logs the track ID and is selected as the target. This method reduces noise by focusing on the intended target to track while ignoring other detections.
+
+Once a target has been selected, the internal state variable in the zoom controller is reset to ensure stable initialization. The hands-on approach makes the system class-agnostic while reducing the computational cost to classify.
+
+Adaptive Auto-Zoom control
+The key component which defines this system as a zoom-tracker is the adaptive zoom controller that dynamically adjusts the digital zoom level based on the observed characteristics of the tracked object.
+
+Since monocular cameras do not provide depth information, the system estimates the relative depth by using two visual cues:
+
+Bounding box area
+Centroid motion
+These signals are smoothed by applying exponential moving average (EMA) to reduce noise and stabilise zoom behaviour.
+
+Bounding Box Areas as a depth proxy.
+To reduce computational costs and the minimise hardware requirements we will be using the area of a bounding box as a proxy for depth perception. How does it work? As an object moves closer to the camera, the projected area increases and vice versa as the object moves away. To reduce the noise from frame to frame detection fluctuations, the bounding box area is filtered using an EMA.
+
+
+
+where Aₜ represents the current bounding box area and α is the smoothing coefficient.
+
+The desired zoom level is computed by maintaining a target ratio between the object’s area and the frame area:
+
+
+
+These formulas make sure the object occupies a consistent portion of the frame regardless of its distance from the camera.
+
+Motion based zoom stabilisation
+
+To handle rapid object motion, we motion the centroid displacement of the bounding box across consecutive frames in the system. We apply Euclidean distance between centroid to provide an estimate of an object's motion in the image plane.
+
+Then exponential moving average is used to smooth out the motion to avoid any sudden zoom fluctuations and a normalised speed factor is then calculated and then combined with an area-based zoom estimate.
+The final zoom target is obtained by blending the two signals.
+
+where (w_a) and (w_m) represent the area and motion weights respectively.
+To ensure smooth transitions, the current zoom level is gradually updated toward the zoom target using a smoothing factor.
+
+Target loss handling
+It is a common occurrence for a target to temporarily disappear due to occlusion or detection failure and a target system must be able to handle these situations. If a target is not detected for a short duration the system maintains the current zoom state while continuing the search for the object, if the target is not re-detected during that window, the zoom falls back to it’s default value. This gradual recovery prevents abrupt visual transitions.
+
+
+=> Implementation
+Implementation
+The proposed system was implemented as a modular real-time pipeline built on top of Python, using the Ultralytics YOLO framework for detection and a modified ByteTrack-based association mechanism for maintaining object identity across frames. The entire system follows a sequential yet feedback-driven execution structure, where each incoming frame is processed through detection, tracking, and adaptive zoom control before being reintroduced into the pipeline.
+At a slightly lower level (and honestly, where most of the engineering effort went), the system is divided into independent modules—detection, tracking, target selection, and zoom engine—so that each component can be tested or replaced without breaking the rest of the pipeline.
+Detection and Tracking Integration
+For object detection, we use a YOLO-based model implemented via the Ultralytics library. The detector processes each frame and outputs bounding boxes along with confidence scores. Instead of treating detection and tracking as separate disjoint steps, the detections are directly passed into a ByteTrack-inspired tracker which assigns persistent IDs to objects across frames.
+Unlike typical multi-object pipelines, we explicitly constrain the system to operate in a single-object tracking mode. This is done by filtering all detections post-association and retaining only the selected target ID. This reduces computational overhead and also avoids instability caused by identity switching in cluttered scenes.
+Internally, each frame produces a structured output of the form:
+Each processed frame produces a structured output containing the spatial and tracking attributes of the selected object. This can be formally represented as:
+
+where bt=(x,y,w,h)b_t = (x, y, w, h)bt​=(x,y,w,h) denotes the bounding box coordinates, ctc_tct​ represents the detection confidence score, and idtid_tidt​ corresponds to the persistent tracking identifier.
+
+This standardized interface ensures that downstream modules (especially the zoom controller and evaluator) remain decoupled from model-specific implementations.
+Target Selection Mechanism
+The system incorporates a human-in-the-loop initialization step for selecting the target object. When the first frame is displayed, the user can click on a bounding box corresponding to the desired object. The system then maps this click to the nearest detected bounding box and retrieves its associated track ID.
+Once selected, this track ID is locked as the primary target, and all subsequent frames filter detections based on this ID. This approach removes ambiguity in multi-object scenes and avoids the need for class-based filtering, making the system effectively class-agnostic.
+There is also a small but important detail here: whenever a new target is selected, the internal state of the zoom controller is reset. This avoids unstable zoom behavior during the first few frames after selection (which otherwise happened quite often during testing).
+Adaptive Zoom Engine
+The adaptive zoom controller is the core component of the system and is implemented as a feedback-driven module that adjusts the effective field of view dynamically.
+The zoom logic is based on two primary signals:
+Bounding box area (scale proxy)
+Centroid displacement (motion proxy)
+The bounding box area is treated as an inverse proxy for depth. As the object moves away, its projected area decreases, and the system compensates by increasing the zoom factor. Conversely, when the object becomes too large in the frame, the zoom is reduced.
+To avoid frame-to-frame noise (which is very noticeable otherwise), the raw area signal is passed through an Exponential Moving Average (EMA) filter. A similar smoothing process is applied to centroid displacement, which is computed using Euclidean distance between consecutive frame centers.
+The final zoom factor is computed as a weighted combination of area-based and motion-based estimates. In practice, we observed that relying purely on area leads to jitter during fast motion, while motion-only control causes scale drift, so combining both gives more stable behavior.
+The zoom itself is implemented using sub-frame cropping followed by bilinear upsampling, effectively simulating digital zoom without requiring optical hardware. This design choice keeps the system hardware-agnostic and suitable for low-cost deployments.
+Feedback Loop Execution
+One of the defining aspects of the implementation is the closed-loop feedback mechanism. Instead of processing raw frames independently, the system feeds the zoom-adjusted frame back into the detector for the next iteration.
+So effectively:
+
+Algorithm 1: Adaptive Zoom Tracking Pipeline
+
+Input: Frame_t  
+Output: Frame_{t+1}
+
+1. Detections ← YOLO(Frame_t)
+2. Tracks ← ByteTrack(Detections)
+3. Target ← Select(Tracks)
+4. ZoomedFrame ← ZoomController(Target, Frame_t)
+5. Frame_{t+1} ← ZoomedFrame
+
+
+This loop allows the detector to operate on a dynamically focused region, improving detection confidence when the object becomes small in the original frame. However, care was taken to ensure that resolution loss and cropping artifacts do not accumulate over time (this required some tuning of zoom limits).
+Logging and Instrumentation
+To support evaluation (and also debugging, because things did break quite a lot initially), a per-frame logging system was implemented. For each processed frame, the following parameters are recorded:
+Bounding box coordinates
+Detection confidence
+Track ID
+Zoom factor
+Estimated object size (relative area)
+Centering error (distance from frame center)
+Processing latency (ms)
+These logs are stored as JSON files per model version and later used by the evaluation pipeline to compute metrics such as detection consistency, zoom gain, and tracking stability.
+System Execution Pipeline
+The entire system is orchestrated through a central pipeline module which coordinates the execution of all components. The processing flow for each frame is:
+Capture frame from video stream
+Run YOLO detection
+Apply ByteTrack association
+Filter for selected target
+Compute zoom factor
+Generate zoomed frame
+Log metrics
+Pass frame to next iteration
+Although conceptually simple, maintaining real-time performance required careful optimization, especially around detection latency and unnecessary memory copies during cropping.
+  
+
+=>Experiments/Results
+
+=> Discussion on the results
+
+Conclusion
+
+The paper presented a framework for single object tracking with adaptive digital zoom for monocular RGB video streams. The system combines YOLO-based detection, Byte track preservation and user guided target selection to create a flexible and reliable tracking pipeline. By using the bounding box area as a proxy for depth and centroid motion as a cue for target movement.
+
+The proposed tracking mechanism improves tracking reliability by keeping the frame of the target almost constant and sufficiently large which helps preserve detection confidence and reduces the likelihood of target loss.
+
+Overall, the proposed approach demonstrates that our pipeline, which uses adaptive digital zoom, can be integrated into a tracking pipeline. It will help improve object visibility, maintain stale framing, and support robust real-time tracking without requiring specialised zoom hardware or depth sensors. 
+
+References
+
+Zoom tracking:
+Fayman, J., Sudarsky, O., Rivlin, E. et al. Zoom tracking and its applications. Machine Vision and Applications 13, 25–37 (2001). https://doi.org/10.1007/PL00013268 
+
+Yolo:
+J. Redmon, S. Divvala, R. Girshick, and A. Farhadi, “You Only Look Once: Unified, Real-Time Object Detection,” in Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR), 2016, pp. 779–788. 
+
+ByteTrack:
+Y. Zhang, P. Sun, Y. Jiang, D. Yu, F. Weng, Z. Yuan, P. Luo, W. Liu, and X. Wang,
+“ByteTrack: Multi-Object Tracking by Associating Every Detection Box,”
+in Proceedings of the European Conference on Computer Vision (ECCV), 2022. 
+
+=> System architecture
+=> Dataset/Hardware
+=> Evaluation metrics
+To evaluate the effectiveness of the proposed adaptive zoom-based tracking system, we define a set of quantitative metrics that capture both detection quality and system-level behavior. Instead of relying on a single score (which, in our case, didn’t really reflect what the system is doing), multiple complementary metrics are used to analyse different aspects such as stability, scale handling, and responsiveness.
+Detection Consistency
+Detection consistency measures how reliably the system is able to detect the target object across frames. It is defined as the fraction of frames where the detection confidence exceeds a predefined threshold.
+
+
+where Nconf>τN_{\text{conf} > \tau}Nconf>τ​ represents the number of frames with confidence above threshold τ\tauτ, and NtotalN_{\text{total}}Ntotal​ is the total number of frames.
+This metric is particularly useful because, in practice, even small drops in confidence tend to propagate into tracking instability later on (something we noticed during early testing runs).
+Zoom Gain
+Zoom Gain is introduced as a key metric to quantify the improvement achieved due to the adaptive zoom mechanism. It measures the relative increase in performance compared to a baseline without zoom.
+Zoom Gain=Pzoom−PbaselinePbaseline\text{Zoom Gain} = \frac{P_{\text{zoom}} - P_{\text{baseline}}}{P_{\text{baseline}}}Zoom Gain=Pbaseline​Pzoom​−Pbaseline​​
+where PzoomP_{\text{zoom}}Pzoom​ is the performance of the zoom-enabled system and PbaselineP_{\text{baseline}}Pbaseline​ corresponds to the baseline configuration.
+This metric is important since raw performance numbers alone don’t clearly show whether zoom is actually helping or just adding complexity.
+Tracking Stability
+Tracking stability evaluates how smooth and consistent the zoom behavior is over time. It is computed as the inverse of the variance of the zoom factor across frames:
+Stability=1−Var(zt)\text{Stability} = 1 - \text{Var}(z_t)Stability=1−Var(zt​)
+where ztz_tzt​ denotes the zoom factor at frame ttt.
+Lower variance indicates smoother zoom transitions, while higher variance typically corresponds to jitter or oscillatory behavior (which becomes visually obvious, especially in fast motion cases).
+Centering Accuracy
+Centering accuracy measures how well the system maintains the target object near the center of the frame. It is calculated as the Euclidean distance between the object centroid and the frame center:
+Center Error=∥(xt,yt)−(xc,yc)∥\text{Center Error} = \| (x_t, y_t) - (x_c, y_c) \|Center Error=∥(xt​,yt​)−(xc​,yc​)∥
+where (xt,yt)(x_t, y_t)(xt​,yt​) is the centroid of the tracked object and (xc,yc)(x_c, y_c)(xc​,yc​) represents the center of the frame.
+In general, lower values indicate better framing, although occasional deviations are expected during abrupt motion or temporary detection drops.
+Scale Robustness
+Scale robustness evaluates how the system performs as the apparent size of the object changes. Instead of a single scalar value, this metric is analyzed as a trend:
+Performance=f(object size)\text{Performance} = f(\text{object size})Performance=f(object size)
+Practically, this is visualized as a curve showing detection consistency (or confidence) against normalized bounding box area.
+This metric is particularly important for our system because handling scale variation is the primary motivation behind introducing adaptive zoom in the first place.
+Recovery Time
+Recovery time measures the number of frames required for the system to regain stable detection after the target is lost (due to occlusion or exiting the frame).
+Recovery Time=tre-detect−tloss\text{Recovery Time} = t_{\text{re-detect}} - t_{\text{loss}}Recovery Time=tre-detect​−tloss​
+Shorter recovery times indicate better robustness to temporary tracking failures. In some cases, the system maintains zoom state briefly before fallback, which slightly affects this metric but improves visual continuity.
+Latency
+Latency measures the average processing time per frame:
+Latency=∑t=1NtimetN\text{Latency} = \frac{\sum_{t=1}^{N} \text{time}_t}{N}Latency=N∑t=1N​timet​​
+This is reported in milliseconds per frame and is also used to compute frames per second (FPS).
+Although the adaptive zoom introduces additional computation, the system remains within real-time constraints under standard hardware conditions.
+Summary of Metrics
+Overall, these metrics collectively capture:
+Detection reliability → Consistency
+Zoom effectiveness → Zoom Gain
+Temporal smoothness → Stability
+Spatial alignment → Center Error
+Scale handling → Scale Robustness
+Failure recovery → Recovery Time
+Efficiency → Latency
+Rather than optimizing for a single metric, the system is evaluated holistically, since improvements in one aspect (for example, aggressive zoom) can sometimes negatively affect another (like stability), so there is a bit of trade-off involved.

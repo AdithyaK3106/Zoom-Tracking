@@ -14,11 +14,15 @@ graph TD
     B -->|Pass 1: Full Frame| C[DetectionModule: YOLO26]
     C -->|Bboxes & Confidences| D{Is Target Tracked?}
     
-    D -->|Yes| E[ZoomEngine: Crop & Resize]
+    D -->|Yes| E[ZoomEngine: Motion-Blended Zoom]
     E -->|Zoomed Crop| F[Pass 2: DetectionModule on Crop]
     F -->|Local Bboxes| G[Coordinate Remapping: Local to Global]
     G --> H[Merge & NMS: cv2.dnn.NMSBoxes]
-    D -->|No| I[Use Pass 1 Detections]
+    
+    D -->|Target Lost| TR[Target Loss Recovery: Hold/Decay Crop]
+    TR --> F
+    
+    D -->|No Target| I[Use Pass 1 Detections]
     
     H --> J[TrackingModule: Supervision ByteTrack]
     I --> J
@@ -32,6 +36,8 @@ graph TD
 ## 🚀 Key Features
 
 * **Two-Pass Detection Feedback Loop**: Runs a secondary inference pass on a zoomed crop of the target, improving detection confidence on distant or small targets.
+* **Motion-Based Zoom Control**: Uses a blended equation (`z_target = wa * z_area + wm * z_motion`) combining bounding box area and target centroid velocity to smooth zoom transitions and maintain scale stability.
+* **Target Loss Recovery**: A dedicated state machine handles occlusion by holding the zoom frame temporarily and then smoothly decaying the zoom factor to prevent abrupt resets.
 * **Decoupled Tracker Integration**: Separates detection from tracking. Coordinates are projected back to global space, deduplicated using Non-Maximum Suppression (NMS), and tracked via **Supervision ByteTrack**.
 * **Temporal Smoothing**: Smooths zoom level changes and crop center coordinate translations via an Exponential Moving Average (EMA) to prevent visual jitter.
 * **Interactive Target Selection**: Allows manual track locking and resetting via OpenCV mouse callbacks.
@@ -150,3 +156,6 @@ python evaluation/runner.py
   * **Latency Distributions** (Mode comparison)
   * **Lag Analysis** (Causality of Zoom_t vs. IoU_t+1)
   * **Failure Mode Distributions** (Motion failure vs. scale failure vs. occlusion)
+* **Advanced Research Metrics**:
+  * **Motion Metrics**: Motion Stability, Motion Variance, Average Motion Speed, and Zoom Responsiveness.
+  * **Recovery Metrics**: Average Recovery Time, Maximum Recovery Time, and Recovery Success Rate.
